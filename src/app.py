@@ -4,8 +4,12 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_community.llms import Ollama
-
+from dotenv import load_dotenv
 import streamlit as st
+
+load_dotenv()
+#export LANGCHAIN_TRACING_V2=true
+#export LANGCHAIN_API_KEY=<ls__a8bb3a53beb742daa4264119da108b24>
 
 def connect_to_database(user: str, password: str,host: str, port: str, database: str):
     db_uri = f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/{database}"
@@ -15,7 +19,7 @@ def connect_to_database(user: str, password: str,host: str, port: str, database:
 def get_sql_chain(db):
     template = """You are a SQL expert. Given an input question, create a syntactically correct SQL query to run.
     Return only the query sql without other words. Your output must go directly into input to a db to do the query
-    Based on the table schema below, write a SQL query that would answer the user's question. Take che conversation history into account.
+    Based on the table schema below and based on the history of conversations , because some input could refer to past sentences, write a SQL query that would answer the user's question. Take che conversation history into account.
     <SCHEMA>{schema}</SCHEMA>
     
     Conversation History: {chat_history}
@@ -49,8 +53,7 @@ def get_response(user_query:str, db:SQLDatabase, chat_history: list):
 
     template = '''
     You are a data analyst. You are interacting with a user who is asking you questions about che company's database.
-    Based on the table schema below, question, SQL query and SQL response, write a natural language response.
-    <SCHEMA>{schema}</SCHEMA>
+    Based on the question, SQL query and SQL response, write a natural language response.
     
     Conversation History: {chat_history}
     SQL Query: <SQL>{query}</SQL>
@@ -68,7 +71,6 @@ def get_response(user_query:str, db:SQLDatabase, chat_history: list):
     llm3 = Ollama(model="llama3")
     full_chain = (
     RunnablePassthrough.assign(query=sql_chain)
-    .assign(schema=lambda _:db.get_table_info())
     .assign(response=lambda vars: run_query(vars["query"]),
     )
     | prompt_response
