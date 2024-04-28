@@ -48,8 +48,30 @@ def get_sql_chain(db):
             | StrOutputParser()
     )
 
-def get_response(user_query:str, db:SQLDatabase, chat_history: list):
+def verify_sintax(db:SQLDatabase):
     sql_chain = get_sql_chain(db)
+
+    template = '''
+    You are a SQL expert. Based on the db schema below, a question user, a query generated and a chat_history, verify that the query is correct. You can accept che query o replace it with a syntactically correct SQL query.
+    <SCHEMA>{schema}</SCHEMA>
+    <chat_history>{chat_history}</chat_history>
+    Question: {question}
+    Query generated: {query}
+    Your turn: Accept or replace? If you accept, you return the same query. Otherwise you return another query. Only the query, not other text!'''
+
+    prompt = ChatPromptTemplate.from_template(template)
+
+    llm = Ollama(model="duckdb-nsql")
+
+    return (
+        {"query" : lambda x: sql_chain, "question" : RunnablePassthrough(), "chat_history": RunnablePassthrough(), "schema" : lambda x: db.get_context()}
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+
+def get_response(user_query:str, db:SQLDatabase, chat_history: list):
+    sql_chain = verify_sintax(db)
 
     template = '''
     You are a data analyst. You are interacting with a user who is asking you questions about che company's database.
@@ -79,6 +101,40 @@ def get_response(user_query:str, db:SQLDatabase, chat_history: list):
     return full_chain.invoke({
         "question" : user_query,
         "chat_history" : chat_history,
+    })
+
+
+def get_response_old(user_query: str, db: SQLDatabase, chat_history: list):
+    sql_chain = get_sql_chain(db)
+
+    template = '''
+    You are a data analyst. You are interacting with a user who is asking you questions about che company's database.
+    Based on the question, SQL query and SQL response, write a natural language response.
+
+    Conversation History: {chat_history}
+    SQL Query: <SQL>{query}</SQL>
+    User question: {question}
+    SQL Response: {response}'''
+
+    prompt_response = ChatPromptTemplate.from_template(template)
+
+    def run_query(query):
+        print("La query che viene usata è: ", query)
+        result = db.run(query)
+        print("Il risultato della query è: ", result)
+        return result
+
+    llm3 = Ollama(model="llama3")
+    full_chain = (
+            RunnablePassthrough.assign(query=sql_chain)
+            .assign(response=lambda vars: run_query(vars["query"]),
+                    )
+            | prompt_response
+            | llm3
+    )
+    return full_chain.invoke({
+        "question": user_query,
+        "chat_history": chat_history,
     })
 
 if "chat_history" not in st.session_state:
