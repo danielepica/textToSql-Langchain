@@ -16,7 +16,35 @@ def connect_to_database(user: str, password: str,host: str, port: str, database:
     #return SQLDatabase.from_uri(db_uri)
     return SQLDatabase.from_uri("sqlite:///Chinook.db") #Only for the moment
 
+def get_explicit_question(db:SQLDatabase):
+    template = """Based on previous conversations and the user's last question, 
+    can you rewrite the question more explicitly in NATURAL LANGUAGE? 
+    For example, if the last user query is "how many users are there?" e now the question is "and profiles?" you must rewrite
+    the question more explicitly in NATURAL LANGUAGE such as "how many profiles are there?". 
+    If the question is already explicit you return the original query without modifying.
+    <schema> {schema} </schema> 
+    <chat_history> {chat_history} </chat_history>
+    Question: {question}
+    RETURN ME ONLY THE EXPLICIT QUESTION Between **
+    Example: **EXPLICIT QUESTION**"""
+
+    prompt = ChatPromptTemplate.from_template(template)
+    llm = Ollama(model="llama3")
+
+    def get_schema(_):
+        schema = db.get_context()
+        return schema
+
+    return (
+            RunnablePassthrough.assign(
+                schema=get_schema)  # assegna il valore corretto a schema che visualizzeremo nel prompt
+            | prompt
+            | llm
+            | StrOutputParser()
+    )
+
 def get_sql_chain(db):
+    explicit_question = get_explicit_question(db)
     template = """You are a SQL expert. Given an input question, create a syntactically correct SQL query to run.
     Return only the query sql without other words. Your output must go directly into input to a db to do the query
     Based on the table schema below and based on the history of conversations , because some input could refer to past sentences, write a SQL query that would answer the user's question. Take che conversation history into account.
@@ -35,14 +63,16 @@ def get_sql_chain(db):
     Question: {question}
     SQL Query:"""
     prompt = ChatPromptTemplate.from_template(template)
-    llm = Ollama(model="duckdb-nsql")
+    llm = Ollama(model="duckdb-nsql:7b-q4_1")
 
     def get_schema(_):
         schema = db.get_context()
         return schema
 
     return (
-            RunnablePassthrough.assign(schema=get_schema)  # assegna il valore corretto a schema che visualizzeremo nel prompt
+            RunnablePassthrough
+            .assign(schema=get_schema) # assegna il valore corretto a schema che visualizzeremo nel prompt
+            .assign(question = lambda x: explicit_question)
             | prompt
             | llm
             | StrOutputParser()
@@ -57,11 +87,12 @@ def verify_sintax(db:SQLDatabase):
     <chat_history>{chat_history}</chat_history>
     Question: {question}
     Query generated: {query}
-    Your turn: Accept or replace? If you accept, you return the same query. Otherwise you return another query. Only the query, not other text!'''
+    Your turn: Accept or replace? If you accept, you return the same query. Otherwise you return another query. Only the query, not other text!
+   '''
 
     prompt = ChatPromptTemplate.from_template(template)
 
-    llm = Ollama(model="duckdb-nsql")
+    llm = Ollama(model="duckdb-nsql:7b-q4_1")
 
     return (
         {"query" : lambda x: sql_chain, "question" : RunnablePassthrough(), "chat_history": RunnablePassthrough(), "schema" : lambda x: db.get_context()}
@@ -70,15 +101,13 @@ def verify_sintax(db:SQLDatabase):
         | StrOutputParser()
     )
 
-def get_response(user_query:str, db:SQLDatabase, chat_history: list):
+def get_response_with_verify(user_query:str, db:SQLDatabase, chat_history: list):
     sql_chain = verify_sintax(db)
 
     template = '''
     You are a data analyst. You are interacting with a user who is asking you questions about che company's database.
-    Based on the question, SQL query and SQL response, write a natural language response.
+    Based on the user question and SQL response, write a natural language response.
     
-    Conversation History: {chat_history}
-    SQL Query: <SQL>{query}</SQL>
     User question: {question}
     SQL Response: {response}'''
 
@@ -90,9 +119,10 @@ def get_response(user_query:str, db:SQLDatabase, chat_history: list):
         print("Il risultato della query è: ", result)
         return result
 
-    llm3 = Ollama(model="llama3")
+    llm3 = Ollama(model="llama2:chat")
     full_chain = (
-    RunnablePassthrough.assign(query=sql_chain)
+    RunnablePassthrough
+    .assign(query=sql_chain)
     .assign(response=lambda vars: run_query(vars["query"]),
     )
     | prompt_response
@@ -104,7 +134,7 @@ def get_response(user_query:str, db:SQLDatabase, chat_history: list):
     })
 
 
-def get_response_old(user_query: str, db: SQLDatabase, chat_history: list):
+def get_response(user_query: str, db: SQLDatabase, chat_history: list):
     sql_chain = get_sql_chain(db)
 
     template = '''
@@ -124,7 +154,7 @@ def get_response_old(user_query: str, db: SQLDatabase, chat_history: list):
         print("Il risultato della query è: ", result)
         return result
 
-    llm3 = Ollama(model="llama3")
+    llm3 = Ollama(model="llama2:chat")
     full_chain = (
             RunnablePassthrough.assign(query=sql_chain)
             .assign(response=lambda vars: run_query(vars["query"]),
