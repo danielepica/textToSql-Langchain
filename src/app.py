@@ -19,11 +19,8 @@ def connect_to_database(user: str, password: str,host: str, port: str, database:
     # Si tratta di un'implementazione del protocollo di accesso ai database PostgreSQL, che consente agli
     # sviluppatori Python di connettersi a un database PostgreSQL e interagire con esso attraverso
     # il proprio codice Python.
-
-    db_postgres = f"postgresql+psycopg2://postgres:password@localhost:5432/big_data"
-    db_uri = f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/{database}"
+    db_postgres = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}"
     return SQLDatabase.from_uri(db_postgres)
-    #return SQLDatabase.from_uri("sqlite:///Chinook.db") #Only for the moment
 
 def get_explicit_question(db:SQLDatabase):
     template = """Based on previous conversations and the user's last question, 
@@ -189,9 +186,9 @@ with st.sidebar:
     st.write("This is a simple chat application using Database. Connect to the database and start chatting.")
     st.text_input("Host", value="localhost", key="Host")
     st.text_input("Port", value="5432", key="Port")
-    st.text_input("Database", value="Chinook", key="Database")
+    st.text_input("Database", value="big_data", key="Database")
     st.text_input("User", value="postgres", key="User")
-    st.text_input("Password", type= "password", value="admin", key="Password")
+    st.text_input("Password", type="password", value="password", key="Password")
     if st.button("Start"):
         with st.spinner(text="Connecting to the database..."):
             db = connect_to_database(
