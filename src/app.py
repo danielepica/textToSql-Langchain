@@ -11,10 +11,19 @@ load_dotenv()
 #export LANGCHAIN_TRACING_V2=true
 #export LANGCHAIN_API_KEY=<ls__a8bb3a53beb742daa4264119da108b24>
 
+#Per avviare tutto faccio -> streamlit run src/app.py
+
 def connect_to_database(user: str, password: str,host: str, port: str, database: str):
+    # Setup database
+    #Psycopg2 è un adattatore del database PostgreSQL per il linguaggio di programmazione Python.
+    # Si tratta di un'implementazione del protocollo di accesso ai database PostgreSQL, che consente agli
+    # sviluppatori Python di connettersi a un database PostgreSQL e interagire con esso attraverso
+    # il proprio codice Python.
+
+    db_postgres = f"postgresql+psycopg2://postgres:password@172.17.0.2:5432/big data"
     db_uri = f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/{database}"
-    #return SQLDatabase.from_uri(db_uri)
-    return SQLDatabase.from_uri("sqlite:///Chinook.db") #Only for the moment
+    return SQLDatabase.from_uri(db_postgres)
+    #return SQLDatabase.from_uri("sqlite:///Chinook.db") #Only for the moment
 
 def get_explicit_question(db:SQLDatabase):
     template = """Based on previous conversations and the user's last question, 
