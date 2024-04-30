@@ -20,7 +20,7 @@ def connect_to_database(user: str, password: str,host: str, port: str, database:
     # sviluppatori Python di connettersi a un database PostgreSQL e interagire con esso attraverso
     # il proprio codice Python.
 
-    db_postgres = f"postgresql+psycopg2://postgres:password@172.17.0.2:5432/big data"
+    db_postgres = f"postgresql+psycopg2://postgres:password@localhost:5432/big_data"
     db_uri = f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/{database}"
     return SQLDatabase.from_uri(db_postgres)
     #return SQLDatabase.from_uri("sqlite:///Chinook.db") #Only for the moment
