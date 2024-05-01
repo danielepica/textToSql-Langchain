@@ -2,7 +2,7 @@ from langchain_community.utilities import SQLDatabase
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.runnables import RunnablePassthrough, RunnableParallel
 from langchain_community.llms import Ollama
 from dotenv import load_dotenv
 import streamlit as st
@@ -55,7 +55,14 @@ def get_sql_chain(db):
     Return only the query sql without other words. Your output must go directly into input to a db to do the query
     Based on the table schema below and based on the history of conversations , because some input could refer to past sentences, write a SQL query that would answer the user's question. Take che conversation history into account.
     <SCHEMA>{schema}</SCHEMA>
-    
+    Remember that transaction_number column indicates the number of the transaction (unique)
+    Remember that date column indicates the date of the transaction
+    Remember that product_number column indicates the number of the product sales (unique)
+    Remember that product_name column indicates the name of the product sales
+    Remember that price column indicates the price of the transaction
+    Remember that quantity column indicates the quantity of the transaction
+    Remember that customer_number column indicates the customer who made the purchase (unique)
+    Remember that country column indicates the country of the customer
     Conversation History: {chat_history}
     Write only the SQL query and nothing else. Do not wrap the SQL query in any other text, not even backticks.
     For example:
@@ -69,7 +76,7 @@ def get_sql_chain(db):
     Question: {question}
     SQL Query:"""
     prompt = ChatPromptTemplate.from_template(template)
-    llm = Ollama(model="duckdb-nsql:7b-q4_1")
+    llm = Ollama(model="pxlksr/defog_sqlcoder-7b-2:Q4_K")
 
     def get_schema(_):
         schema = db.get_context()
@@ -139,6 +146,37 @@ def get_response_with_verify(user_query:str, db:SQLDatabase, chat_history: list)
         "chat_history" : chat_history,
     })
 
+def rewrite_query(user_input:str, user_query:str, db:SQLDatabase, error:str):
+    template = '''
+    Based on this input user: <user_input>{user_input}</user_input>
+    this query: <query>{query}</query>
+    Remember that transaction_number column indicates the number of the transaction (unique)
+    Remember that date column indicates the date of the transaction
+    Remember that product_number column indicates the number of the product sales (unique)
+    Remember that product_name column indicates the name of the product sales
+    Remember that price column indicates the price of the transaction
+    Remember that quantity column indicates the quantity of the transaction
+    Remember that customer_number column indicates the customer who made the purchase (unique)
+    Remember that country column indicates the country of the customer
+    this schema: <schema>{schema}</schema>
+    and this error message: <error>{error}</error>
+    can you correct the query? 
+    Remember that you have only one table and the query sometimes is about one specific column of the table!
+    Give me only the rewrite query, not only words!
+    '''
+    prompt = ChatPromptTemplate.from_template(template)
+
+    llm3= Ollama(model="pxlksr/defog_sqlcoder-7b-2:Q4_K", temperature = 0)
+    full_chain = (
+        RunnableParallel(user_input = lambda x: user_input, query = lambda x: user_query, schema = lambda x: db.get_context(), error = lambda x: error)
+        | prompt
+        | llm3
+        | StrOutputParser()
+    )
+    return full_chain.invoke({})
+
+
+
 
 def get_response(user_query: str, db: SQLDatabase, chat_history: list):
     sql_chain = get_sql_chain(db)
@@ -156,9 +194,22 @@ def get_response(user_query: str, db: SQLDatabase, chat_history: list):
 
     def run_query(query):
         print("La query che viene usata è: ", query)
-        result = db.run(query)
-        print("Il risultato della query è: ", result)
-        return result
+        try:
+            result = db.run(query)
+            print("Il risultato della query è: ", result)
+            return result
+        except Exception as e:
+            print(e)
+            new_query = rewrite_query(user_query, query, db, e)
+            print("New query: ", new_query)
+            print("Try with new query")
+            try:
+                result = db.run(new_query)
+                return result
+            except Exception as e:
+                print(e)
+                print("Also the second run is failed")
+            return "I don't know, can you repeat the question?"
 
     llm3 = Ollama(model="llama2:chat")
     full_chain = (
