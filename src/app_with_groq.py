@@ -4,6 +4,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableParallel
 from langchain_community.llms import Ollama
+from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 import streamlit as st
 
@@ -13,21 +14,28 @@ load_dotenv()
 
 #Per avviare tutto faccio -> streamlit run src/app.py
 
-# Psycopg2 è un adattatore del database PostgreSQL per il linguaggio di programmazione Python.
-# Si tratta di un'implementazione del protocollo di accesso ai database PostgreSQL, che consente agli
-# sviluppatori Python di connettersi a un database PostgreSQL e interagire con esso attraverso
-# il proprio codice Python.
 def connect_to_database(user: str, password: str,host: str, port: str, database: str):
     # Setup database
+    #Psycopg2 è un adattatore del database PostgreSQL per il linguaggio di programmazione Python.
+    # Si tratta di un'implementazione del protocollo di accesso ai database PostgreSQL, che consente agli
+    # sviluppatori Python di connettersi a un database PostgreSQL e interagire con esso attraverso
+    # il proprio codice Python.
     db_postgres = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}"
     return SQLDatabase.from_uri(db_postgres)
 
+llm = ChatGroq(
+        temperature=0,
+        model="llama3-70b-8192",
+        api_key="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"
+        # Optional if not set as an environment variable
+    )
+
 def get_explicit_question(db:SQLDatabase):
+    #Aggiungere chat_history come parametro e nella chain nella variabile, per ora passo solo il context.
     template = """Based on previous conversations and the user's last question, 
     can you rewrite the question more explicitly in NATURAL LANGUAGE? 
-    For example, if the last user query is "how many users are there?" e now the question 
-    is "and profiles?" you must rewrite the question more explicitly in NATURAL LANGUAGE 
-    such as "how many profiles are there?". 
+    For example, if the last user query is "how many users are there?" e now the question is "and profiles?" you must rewrite
+    the question more explicitly in NATURAL LANGUAGE such as "how many profiles are there?". 
     If the question is already explicit you return the original query without modifying.
     <schema> {schema} </schema> 
     <chat_history> {chat_history} </chat_history>
@@ -36,7 +44,8 @@ def get_explicit_question(db:SQLDatabase):
     Example: **EXPLICIT QUESTION**"""
 
     prompt = ChatPromptTemplate.from_template(template)
-    llm = Ollama(model="llama3")
+    #llm = Ollama(model="llama3")
+
 
     def get_schema(_):
         schema = db.get_context()
@@ -51,11 +60,11 @@ def get_explicit_question(db:SQLDatabase):
     )
 
 def get_sql_chain(db):
+    #capire se passare chat_history qui e conversation history.
     explicit_question = get_explicit_question(db)
     template = """You are a SQL expert. Given an input question, create a syntactically correct SQL query to run.
     Return only the query sql without other words. Your output must go directly into input to a db to do the query
-    Based on the table schema below and based on the history of conversations , because some input could refer to 
-    past sentences, write a SQL query that would answer the user's question. Take che conversation history into account.
+    Based on the table schema below and based on the history of conversations , because some input could refer to past sentences, write a SQL query that would answer the user's question. Take che conversation history into account.
     <SCHEMA>{schema}</SCHEMA>
     Remember that transaction_number column indicates the number of the transaction (unique)
     Remember that date column indicates the date of the transaction
@@ -78,7 +87,7 @@ def get_sql_chain(db):
     Question: {question}
     SQL Query:"""
     prompt = ChatPromptTemplate.from_template(template)
-    llm = Ollama(model="pxlksr/defog_sqlcoder-7b-2:Q4_K")
+    #llm = Ollama(model="pxlksr/defog_sqlcoder-7b-2:Q4_K")
 
     def get_schema(_):
         schema = db.get_context()
@@ -107,7 +116,7 @@ def verify_sintax(db:SQLDatabase):
 
     prompt = ChatPromptTemplate.from_template(template)
 
-    llm = Ollama(model="duckdb-nsql:7b-q4_1")
+    #llm = Ollama(model="duckdb-nsql:7b-q4_1")
 
     return (
         {"query" : lambda x: sql_chain, "question" : RunnablePassthrough(), "chat_history": RunnablePassthrough(), "schema" : lambda x: db.get_context()}
@@ -134,14 +143,14 @@ def get_response_with_verify(user_query:str, db:SQLDatabase, chat_history: list)
         print("Il risultato della query è: ", result)
         return result
 
-    llm3 = Ollama(model="llama2:chat")
+    #llm3 = Ollama(model="llama2:chat")
     full_chain = (
     RunnablePassthrough
     .assign(query=sql_chain)
     .assign(response=lambda vars: run_query(vars["query"]),
     )
     | prompt_response
-    | llm3
+    | llm
 )
     return full_chain.invoke({
         "question" : user_query,
@@ -168,15 +177,14 @@ def rewrite_query(user_input:str, user_query:str, db:SQLDatabase, error:str):
     '''
     prompt = ChatPromptTemplate.from_template(template)
 
-    llm3= Ollama(model="llama3", temperature = 0)
+    #llm3 = Ollama(model="pxlksr/defog_sqlcoder-7b-2:Q4_K", temperature = 0)
     full_chain = (
-        RunnableParallel(user_input = lambda x: user_input, query = lambda x: user_query,
-                         schema = lambda x: db.get_context(), error = lambda x: error)
+        RunnableParallel(user_input = lambda x: user_input, query = lambda x: user_query, schema = lambda x: db.get_context(), error = lambda x: error)
         | prompt
-        | llm3
+        | llm
         | StrOutputParser()
     )
-    return full_chain.invoke({"user_input" : user_input, "query" : user_query, "schema" : db.get_context(), "error" : error})
+    return full_chain.invoke({})
 
 
 
@@ -196,10 +204,10 @@ def get_response(user_query: str, db: SQLDatabase, chat_history: list):
     prompt_response = ChatPromptTemplate.from_template(template)
 
     def run_query(query):
-        print("The query that is used is: ", query)
+        print("La query che viene usata è: ", query)
         try:
             result = db.run(query)
-            print("The result of the query is: ", result)
+            print("Il risultato della query è: ", result)
             return result
         except Exception as e:
             print(e)
@@ -214,13 +222,13 @@ def get_response(user_query: str, db: SQLDatabase, chat_history: list):
                 print("Also the second run is failed")
             return "I don't know, can you repeat the question?"
 
-    llm3 = Ollama(model="llama3")
+    #llm3 = Ollama(model="llama3")
     full_chain = (
             RunnablePassthrough.assign(query=sql_chain)
             .assign(response=lambda vars: run_query(vars["query"]),
                     )
             | prompt_response
-            | llm3
+            | llm
     )
     return full_chain.invoke({
         "question": user_query,
@@ -272,7 +280,7 @@ if user_question is not None and user_question.strip() != "":
 
     with (st.chat_message("AI")):
         response = get_response(user_question, st.session_state.database, st.session_state.chat_history) #da capire
-        st.markdown(response)
-    st.session_state.chat_history.append(AIMessage(content=response))
+        st.markdown(response.content)
+    st.session_state.chat_history.append(AIMessage(content=response.content))
     #with st.spinner("Queryng database..."):
 
