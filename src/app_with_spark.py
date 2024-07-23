@@ -9,13 +9,12 @@ import streamlit as st
 from pyspark.sql import SparkSession
 
 def connect_to_spark():
-    # Crea la SparkSession
+    # Create SparkSession
     spark = SparkSession.builder.appName("CSV to Spark SQL").getOrCreate()
     csv_file_path = "/Users/danielepica/Desktop/Big_Data/progetto_personale/LangChain/Sales Transaction.csv"
     df = spark.read.csv(csv_file_path, header=True, inferSchema=True)
-    #Per eseguire query SQL sul DataFrame, devi registrarlo come una vista temporanea.
-
-    # Registra il DataFrame come una vista temporanea
+    # To run SQL queries on the DataFrame, you must register it as a temporary view.
+    # Register the DataFrame as a temporary view
     df.createOrReplaceTempView("my_temp_table")
     return spark
 
@@ -135,7 +134,7 @@ def rewrite_query(user_input:str, user_query:str, error:str):
     llm3= Ollama(model="llama3", temperature = 0)
     full_chain = (
         RunnableParallel(user_input = lambda x: user_input, query = lambda x: user_query,
-                         schema = lambda x: db.get_context(), error = lambda x: error)
+                          error = lambda x: error)
         | prompt
         | llm3
         | StrOutputParser()
