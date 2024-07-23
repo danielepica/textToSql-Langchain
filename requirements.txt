@@ -1,0 +1,6 @@
+streamlit
+langchain
+langchain-community
+langsmith
+python-dotenv
+psycopg2-binary
