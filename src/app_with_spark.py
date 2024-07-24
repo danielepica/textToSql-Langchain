@@ -11,7 +11,7 @@ from pyspark.sql import SparkSession
 def connect_to_spark():
     # Create SparkSession
     spark = SparkSession.builder.appName("CSV to Spark SQL").getOrCreate()
-    csv_file_path = "/Users/danielepica/Desktop/Big_Data/progetto_personale/LangChain/Sales Transaction.csv"
+    csv_file_path = "SalesTransaction.csv"
     df = spark.read.csv(csv_file_path, header=True, inferSchema=True)
     # To run SQL queries on the DataFrame, you must register it as a temporary view.
     # Register the DataFrame as a temporary view
